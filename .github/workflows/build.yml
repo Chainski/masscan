@@ -1,0 +1,80 @@
+name: Build masscan-windows-mingw
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  repository-projects: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download MinGW
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri https://github.com/niXman/mingw-builds-binaries/releases/download/15.2.0-rt_v13-rev0/x86_64-15.2.0-release-posix-seh-ucrt-rt_v13-rev0.7z -OutFile mingw.7z
+        shell: powershell
+
+      - name: Extract MinGW
+        shell: cmd
+        run: 7z x mingw.7z -oC:\mingw -y > nul
+
+      - name: Add MinGW to PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\mingw\bin'
+
+      - name: Verify GCC
+        shell: cmd
+        run: gcc --version
+
+      - name: Build project
+        shell: cmd
+        run: |
+          mingw32-make
+
+      - name: Delete existing tag and release
+        if: github.event_name == 'push'
+        uses: dev-drprasad/delete-tag-and-release@v1.1
+        with:
+          tag_name: masscan-1.3.2
+          delete_release: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rename build
+        id: rename_exe
+        shell: cmd
+        run: ren "bin\masscan.exe" "masscan-x86_64-pc-windows-mingw.exe"
+          
+      - name: List build directory
+        shell: cmd
+        run: dir bin
+
+      - name: Create Release and Upload Asset
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: masscan-1.3.2
+          name: masscan-1.3.2
+          body: |
+            Mass IP port scanner
+            Release created by GitHub Actions
+
+            - [x] Added MinGW builds
+          draft: false
+          prerelease: false
+          files: bin/masscan-x86_64-pc-windows-mingw.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: false
